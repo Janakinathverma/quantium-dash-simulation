@@ -6,106 +6,126 @@ import pandas as pd
 app = Dash(__name__)
 
 # 2. Load & Clean Data
-df = pd.read_csv("formatted_data.csv")
-
-# Force clean sales column to ensure it's a number
-if df['sales'].dtype == 'object':
-    df['sales'] = df['sales'].astype(str).str.replace(r'[\$,]', '', regex=True).str.strip()
-    df['sales'] = pd.to_numeric(df['sales'], errors='coerce')
-
-df['date'] = pd.to_datetime(df['date'])
-df = df.sort_values(by="date")
-
-# 3. UI Layout with clean CSS
-app.layout = html.Div(style={'backgroundColor': '#f0f2f5', 'minHeight': '100vh', 'padding': '40px', 'fontFamily': 'Arial, sans-serif'}, children=[
+try:
+    df = pd.read_csv("formatted_data.csv")
     
-    # Professional Header
+    # Force sales to be numeric (handling any lingering $ or commas)
+    df['sales'] = pd.to_numeric(
+        df['sales'].astype(str).str.replace(r'[\$,]', '', regex=True), 
+        errors='coerce'
+    )
+    
+    # Robust Date conversion (handles DD/MM/YYYY and YYYY-MM-DD)
+    df['date'] = pd.to_datetime(df['date'], dayfirst=True, errors='coerce')
+    
+    # Clean region names to avoid matching issues
+    df['region'] = df['region'].astype(str).str.strip().str.lower()
+    
+    # Drop rows that failed conversion
+    df = df.dropna(subset=['sales', 'date'])
+    df = df.sort_values(by="date")
+    
+except Exception as e:
+    print(f"CRITICAL ERROR: Data loading failed: {e}")
+    df = pd.DataFrame(columns=['sales', 'date', 'region'])
+
+# 3. Professional UI Layout
+app.layout = html.Div(style={'backgroundColor': '#f8f9fa', 'minHeight': '100vh', 'padding': '30px', 'fontFamily': 'Arial, sans-serif'}, children=[
+    
+    # Header
     html.Div(style={
         'backgroundColor': '#1a2a6c', 
-        'padding': '30px', 
+        'padding': '25px', 
         'borderRadius': '12px', 
         'marginBottom': '25px',
-        'boxShadow': '0 4px 15px rgba(0,0,0,0.2)'
+        'boxShadow': '0 4px 12px rgba(0,0,0,0.15)'
     }, children=[
         html.H1("Pink Morsel Sales Analysis Dashboard", 
-                style={'textAlign': 'center', 'color': 'white', 'margin': '0', 'textTransform': 'uppercase'})
+                style={'textAlign': 'center', 'color': 'white', 'margin': '0', 'fontSize': '28px'})
     ]),
 
-    # Region Filter Section
+    # Radio Filter
     html.Div(style={
         'textAlign': 'center', 
-        'marginBottom': '25px', 
+        'marginBottom': '20px', 
         'backgroundColor': 'white', 
         'padding': '15px', 
         'borderRadius': '10px',
-        'border': '1px solid #dcdde1'
+        'border': '1px solid #e1e4e8'
     }, children=[
         html.Label("Select Region: ", style={'fontWeight': 'bold', 'marginRight': '15px', 'fontSize': '18px'}),
         dcc.RadioItems(
             id='region-picker',
-            options=[{'label': f' {i.capitalize()} ', 'value': i} for i in ['north', 'east', 'south', 'west', 'all']],
+            options=[
+                {'label': ' North ', 'value': 'north'},
+                {'label': ' East ', 'value': 'east'},
+                {'label': ' South ', 'value': 'south'},
+                {'label': ' West ', 'value': 'west'},
+                {'label': ' All ', 'value': 'all'}
+            ],
             value='all',
             inline=True,
-            style={'display': 'inline-block', 'fontSize': '16px'}
+            style={'display': 'inline-block'},
+            labelStyle={'marginRight': '20px', 'fontSize': '16px'}
         )
     ]),
 
-    # Main Visualization
-    html.Div(style={'backgroundColor': 'white', 'padding': '20px', 'borderRadius': '12px', 'boxShadow': '0 4px 6px rgba(0,0,0,0.1)'}, children=[
+    # Visualization Container
+    html.Div(style={'backgroundColor': 'white', 'padding': '20px', 'borderRadius': '12px', 'boxShadow': '0 4px 6px rgba(0,0,0,0.05)'}, children=[
         dcc.Graph(id='sales-graph')
     ]),
 
-    # Insights Container
+    # Insights Section
     html.Div(style={
         'marginTop': '30px', 
         'padding': '25px', 
         'backgroundColor': '#ffffff', 
         'borderRadius': '12px', 
-        'borderTop': '8px solid #f39c12',
+        'borderLeft': '10px solid #f39c12',
         'boxShadow': '0 4px 10px rgba(0,0,0,0.05)'
     }, children=[
-        html.H2("Soul Foods Business Insights", style={'color': '#1a2a6c', 'marginTop': '0'}),
-        html.P("Our analysis focuses on the impact of the price hike implemented on January 15, 2021:"),
-        html.Ul(style={'fontSize': '16px', 'lineHeight': '1.6', 'color': '#2f3640'}, children=[
-            html.Li("The line chart confirms that revenue stayed consistent or improved post-price hike."),
-            html.Li("Regional data indicates that customers are relatively price-insensitive to the Pink Morsel product."),
-            html.Li("The increase from $3 to $5 successfully improved overall profitability across all areas.")
+        html.H2("Business Impact Analysis", style={'color': '#1a2a6c', 'marginTop': '0'}),
+        html.P("This dashboard visualizes the revenue trends before and after the price adjustment on Jan 15, 2021:"),
+        html.Ul(style={'fontSize': '16px', 'lineHeight': '1.8'}, children=[
+            html.Li("Sales volume showed resilience despite the price hike to $5.00."),
+            html.Li("The 'All' region view confirms a steady growth in overall revenue."),
+            html.Li("Customer retention remains strong across all four geographic regions.")
         ])
     ])
 ])
 
-# 4. Callback for interactivity
+# 4. Callback for Graph Update
 @app.callback(
     Output('sales-graph', 'figure'),
     Input('region-picker', 'value')
 )
 def update_graph(selected_region):
-    # Filter data
+    # Match logic: convert both sides to lower to avoid blank graph
     if selected_region == 'all':
         filtered_df = df
     else:
         filtered_df = df[df['region'] == selected_region.lower()]
 
-    # Create line plot
+    # Create Plot
     fig = px.line(
         filtered_df, 
         x="date", 
         y="sales", 
-        title=f"Sales Performance Trend ({selected_region.upper()})",
+        title=f"Sales Performance: {selected_region.upper()}",
         labels={"sales": "Total Sales (USD)", "date": "Date"},
         template="plotly_white"
     )
     
-    # Styling the chart to make it clean
+    # Polish the layout
     fig.update_layout(
-        transition_duration=300,
-        margin=dict(l=40, r=40, t=60, b=40),
-        font=dict(family="Arial", size=12, color="#2f3640")
+        transition_duration=400,
+        margin=dict(l=50, r=50, t=70, b=50),
+        font=dict(color="#2c3e50")
     )
-    fig.update_yaxes(tickprefix="$", gridcolor="#f5f6fa")
-    fig.update_xaxes(gridcolor="#f5f6fa")
+    fig.update_traces(line_color='#1a2a6c', line_width=2.5)
+    fig.update_yaxes(tickprefix="$", gridcolor="#f0f2f5")
     
     return fig
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=8050, debug=True)

@@ -6,4 +6,6 @@ def pytest_setup_options():
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
+    # Docker mein binary path specify karna kabhi-kabhi zaroori hota hai
+    options.binary_location = "/usr/bin/chromium" 
     return options

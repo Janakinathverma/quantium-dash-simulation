@@ -7,28 +7,39 @@ DATA_DIR = "./data"
 OUTPUT_FILE = "formatted_data.csv"
 
 # 2. Load and Combine
-# Using a list comprehension is a bit more 'Pythonic' and efficient
 csv_files = glob.glob(os.path.join(DATA_DIR, "*.csv"))
 
 if not csv_files:
     print(f"Error: No CSV files found in {DATA_DIR}")
 else:
-    # Read all files and combine immediately
     combined_df = pd.concat([pd.read_csv(f) for f in csv_files], ignore_index=True)
 
     # 3. Filter for 'Pink Morsel'
-    # Using .str.contains with case=False is often safer for variations
-    combined_df = combined_df[combined_df['product'].str.contains('pink morsel', case=False, na=False)].copy()
+    combined_df = combined_df[
+        combined_df['product'].str.contains('pink morsel', case=False, na=False)
+    ].copy()
 
-    # 4. Clean Price and Calculate Sales
-    # Use r'[\$,]' to avoid SyntaxWarnings and .replace to fix formatting
-    if combined_df['price'].dtype == 'object':
-        combined_df['price'] = combined_df['price'].replace(r'[\$,]', '', regex=True).astype(float)
+    # 4. Clean Price BEFORE multiplication
+    # BUG FIX: Always strip $ and commas regardless of dtype.
+    # The old dtype=='object' guard was skipping the clean on some pandas versions,
+    # causing the raw string to be used directly in the multiplication, which Python
+    # interpreted as string repetition (* quantity) instead of numeric multiplication.
+    combined_df['price'] = (
+        combined_df['price']
+        .astype(str)                          # ensure string for .str accessor
+        .str.replace(r'[\$,]', '', regex=True) # strip $ and commas
+        .astype(float)                         # convert to number
+    )
 
+    # 5. Quantity must also be numeric
+    combined_df['quantity'] = pd.to_numeric(combined_df['quantity'], errors='coerce')
+
+    # 6. Calculate Sales (now safely numeric * numeric)
     combined_df['sales'] = combined_df['price'] * combined_df['quantity']
 
-    # 5. Select and Export
+    # 7. Select and Export
     final_df = combined_df[['sales', 'date', 'region']]
     final_df.to_csv(OUTPUT_FILE, index=False)
 
     print(f"Success! Processed {len(final_df)} rows. Saved to {OUTPUT_FILE}")
+    print(f"Sales range: ${final_df['sales'].min():.2f} – ${final_df['sales'].max():.2f}")
